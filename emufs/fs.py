@@ -1,7 +1,7 @@
 from tempfile import TemporaryDirectory
 from pathlib import Path, PurePosixPath
 from zipfile import ZipFile
-from typing import Self
+from typing import Self, Generator
 from base64 import b64encode
 from json import loads, dumps
 from uuid import uuid4
@@ -51,7 +51,7 @@ class EmuFS:
         new_inode_id = str(uuid4())
         new_data_id = str(uuid4())
         new_entries_data = dumps({}).encode("ascii")
-        new_inode = Inode.new_empty(new_data_id, len(new_entries_data), TYPE_DIR | 0o000) # 0o755
+        new_inode = Inode.new_empty(new_data_id, len(new_entries_data), TYPE_DIR | 0o755)
 
         self._get_physical_path(new_data_id).write_bytes(new_entries_data)
         self._write_inode(new_inode, new_inode_id)
@@ -76,13 +76,41 @@ class EmuFS:
         self._get_physical_path(inode_id).unlink()
         self._remove_dir_entry(parent_inode_id, path.name)
 
-    def ls(self, path: PurePosixPath) -> list[PurePosixPath]:
+    def listdir(self, path: PurePosixPath) -> list[str]:
         inode_id = self._resolve_path(path)
         
         if not inode_id:
             raise Exception(f"No such directory: {path}")
 
-        return [path / x for x in self._get_dir_entries(inode_id).keys()]
+        return list(self._get_dir_entries(inode_id).keys())
+
+    def walk(self, path: PurePosixPath, topdown: bool=True):
+        inode_id = self._resolve_path(path)
+
+        if not inode_id:
+            raise Exception(f"No such directory: {path}")
+
+        entries = self._get_dir_entries(inode_id)
+        dirs: list[str] = []
+        nondirs: list[str] = []
+        for name, item_inode_id in entries.items():
+            inode = self._read_inode(item_inode_id)
+            if inode.is_dir():
+                dirs.append(name)
+            else:
+                nondirs.append(name)
+
+        if topdown:
+            yield path, dirs, nondirs
+
+        for name in dirs:
+            new_path = path / name
+            for x in self.walk(new_path, topdown):
+                yield x
+
+        if not topdown:
+            yield path, dirs, nondirs
+
 
     def chmod(self, path: PurePosixPath, mode: int) -> None:
         inode_id = self._resolve_path(path)
@@ -135,6 +163,7 @@ class EmuFS:
         return self._fs_path / b64encode(inode_id.encode("ascii")).decode("ascii")
 
     def _resolve_path(self, path: PurePosixPath) -> str | None:
+        path = PurePosixPath("/") / path
         path = path.relative_to("/")
         inode_id = _ROOT_INODE_ID
         entries = self._get_dir_entries(inode_id)

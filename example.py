@@ -2,12 +2,20 @@ import emufs
 from pathlib import Path, PurePosixPath
 
 with emufs.open(Path("~/Downloads/source.devz").expanduser()) as fs:
+    print(fs.listdir(PurePosixPath("/")))
+    print(fs.listdir(PurePosixPath("/code")))
     print(fs.stat(PurePosixPath("/code/cpu")))
     fs.mkdir(PurePosixPath("/code/meow"))
-    print(fs.ls(PurePosixPath("/code")))
+    print(fs.listdir(PurePosixPath("/code")))
 
-    with fs.open(PurePosixPath("/code/meow.txt"), "a+") as f:
-        f.write("meow")
+    for dat in fs.walk(PurePosixPath("/code"), False):
+        print(dat)
+
+    with fs.open(PurePosixPath("/code/meow/aaaaaa.txt"), "a+") as f:
+        f.write("aaaaaaaaaaa")
+
+    with fs.open(PurePosixPath("/tmpl/bbbbb.txt"), "a+") as f:
+        f.write("bbbbbbbb")
 
     with fs.open(PurePosixPath("/code/Controller.js"), "r") as f:
         print(f.read(100))
